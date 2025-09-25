@@ -82,10 +82,7 @@ def category_to_color(cat):
         return [200, 30, 30]
 
 # UI
-st.title("🚰 HMPI — Heavy Metal Pollution Index Calculator (Prototype)")
-st.markdown("Upload a groundwater dataset (CSV/Excel) with geo-coordinates and metal concentrations. "
-            "This demo computes HMPI using a standard method: Qi = (Mi/Si)*100, Wi = 1/Si, HPI = sum(Wi*Qi)/sum(Wi). "
-            "You can edit permissible limits (Si) before computing. **These defaults are illustrative — verify standards for real-world use.**")
+st.title("🚰 HMPI — Heavy Metal Pollution Index Calculator")
 
 with st.sidebar:
     st.header("Data")
@@ -203,4 +200,4 @@ if df is not None:
                         st.warning(f"Could not compute contributions chart: {e}")
 
 st.markdown("---")
-st.markdown("**Notes & next steps:**\n- This prototype assumes you already have measured concentrations (from lab instruments like AAS/ICP-MS).\n- Verify permissible limits (Si) before making decisions.\n- For production: add input validation, error handling, user auth, and unit tests.")
+
