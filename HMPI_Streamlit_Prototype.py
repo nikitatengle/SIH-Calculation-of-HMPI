@@ -8,12 +8,12 @@ import io
 
 st.set_page_config(page_title="HMPI Calculator", layout="wide")
 
-SAMPLE_CSV = """Site,Latitude,Longitude,Pb,Cd,Cr,Ni,Zn,Cu
-Site A,21.1458,79.0882,0.015,0.002,0.03,0.01,1.2,0.3
-Site B,19.0760,72.8777,0.005,0.001,0.07,0.02,3.4,0.8
-Site C,28.7041,77.1025,0.02,0.004,0.1,0.05,4.0,1.5
-Site D,13.0827,80.2707,0.008,0.0005,0.02,0.015,0.6,0.2
-Site E,22.5726,88.3639,0.03,0.006,0.2,0.04,6.0,2.0
+SAMPLE_CSV = """Site, Latitude, Longitude, Pb, Cd, Cr, Ni, Zn, Cu
+Site A, 21.1458, 79.0882, 0.015, 0.002, 0.03, 0.01, 1.2, 0.3
+Site B, 19.0760, 72.8777, 0.005, 0.001, 0.07, 0.02, 3.4, 0.8
+Site C, 28.7041, 77.1025, 0.02, 0.004, 0.1, 0.05, 4.0, 1.5
+Site D, 13.0827, 80.2707, 0.008, 0.0005, 0.02, 0.015, 0.6, 0.2
+Site E, 22.5726, 88.3639, 0.03, 0.006, 0.2, 0.04, 6.0, 2.0
 """
 
 # Example/default permissible limits (illustrative) 
@@ -200,4 +200,5 @@ if df is not None:
                         st.warning(f"Could not compute contributions chart: {e}")
 
 st.markdown("---")
+
 
