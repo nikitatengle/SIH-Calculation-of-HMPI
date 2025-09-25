@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -26,10 +24,8 @@ DEFAULT_LIMITS = {
     "Cu": 2.0
 }
 
-
 def load_sample_df():
     return pd.read_csv(io.StringIO(SAMPLE_CSV))
-
 
 def read_input(file):
     if file is None:
@@ -43,43 +39,28 @@ def read_input(file):
         st.error(f"Failed to read file: {e}")
         return None
 
-
 def compute_hpi(df, metals, standards):
-    # Keep only metals that have positive standard
     use_metals = [m for m in metals if standards.get(m, 0) > 0]
     if len(use_metals) == 0:
         raise ValueError("No metals with valid (>0) permissible limits.")
     S = np.array([standards[m] for m in use_metals], dtype=float)
     weights = 1.0 / S  # Wi
-    # Qi = (Mi / Si) * 100
     M = df[use_metals].fillna(0).to_numpy(dtype=float)
     Qi = (M / S) * 100.0
-    contributions = Qi * weights  # shape (nrows, nmetals)
+    contributions = Qi * weights
     numerator = contributions.sum(axis=1)
     denominator = weights.sum()
     hpi = numerator / denominator
-    # per-metal contribution dataframe
     contrib_df = pd.DataFrame(contributions, columns=[f"{m}_contrib" for m in use_metals], index=df.index)
     return pd.Series(hpi, index=df.index), contrib_df, use_metals
 
-
-def categorize_hpi(h):
-    # Default thresholds; editable in the UI
-    if h < 50:
-        return "Low"
-    elif h < 100:
-        return "Moderate"
-    else:
-        return "High"
-
-
 def category_to_color(cat):
     if cat == "Low":
-        return [30, 160, 60]
+        return [30, 160, 60]       # green
     elif cat == "Moderate":
-        return [255, 165, 0]
+        return [255, 165, 0]       # orange
     else:
-        return [200, 30, 30]
+        return [200, 30, 30]       # red
 
 # UI
 st.title("🚰 HMPI — Heavy Metal Pollution Index Calculator")
@@ -89,7 +70,6 @@ with st.sidebar:
     uploaded = st.file_uploader("Upload CSV or Excel (columns: site, lat, lon, metal columns)", type=["csv","xlsx","xls"])
     st.markdown("Or download a sample dataset to try:")
     st.download_button("Download sample CSV", SAMPLE_CSV, file_name="hmpi_sample.csv", mime="text/csv")
-
 
 df = None
 if uploaded:
@@ -103,7 +83,6 @@ if df is not None:
     st.dataframe(df.head())
 
     cols = df.columns.tolist()
-    # auto-detect numeric columns
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
     st.sidebar.header("Map & Columns")
@@ -112,7 +91,6 @@ if df is not None:
     lon_col = st.sidebar.selectbox("Longitude column", options=["None"]+cols, index=cols.index("Longitude") if "Longitude" in cols else 0)
 
     st.sidebar.header("Select metal columns")
-    # default metals: intersection of known metals and columns
     known_metals = list(DEFAULT_LIMITS.keys())
     default_mets = [c for c in cols if c in known_metals]
     metals = st.sidebar.multiselect("Metal concentration columns (mg/L)", options=[c for c in cols if c not in [lat_col, lon_col, site_col]], default=default_mets)
@@ -134,7 +112,6 @@ if df is not None:
         t2 = st.sidebar.number_input("Moderate/High threshold", min_value=0.0, value=100.0, step=1.0)
 
         if st.button("Compute HMPI"):
-            # validate lat/lon and standards
             if (lat_col == "None") or (lon_col == "None"):
                 st.error("Select latitude and longitude columns to enable map and compute.")
             else:
@@ -145,7 +122,6 @@ if df is not None:
                 else:
                     df_results = df.copy()
                     df_results["HPI"] = np.round(hpi_series, 3)
-                    # categorize based on thresholds t1,t2
                     cats = []
                     for h in df_results["HPI"]:
                         if h < t1:
@@ -155,7 +131,6 @@ if df is not None:
                         else:
                             cats.append("High")
                     df_results["Category"] = cats
-                    # merge contributions
                     df_results = pd.concat([df_results, contrib_df], axis=1)
 
                     st.success("HMPI computed ✅")
@@ -169,24 +144,39 @@ if df is not None:
                     try:
                         map_df = df_results[[lat_col, lon_col]].copy()
                         map_df = map_df.rename(columns={lat_col: "lat", lon_col: "lon"})
+
+                        # Convert lat/lon to numeric to avoid string errors
+                        map_df["lat"] = pd.to_numeric(map_df["lat"], errors="coerce")
+                        map_df["lon"] = pd.to_numeric(map_df["lon"], errors="coerce")
+                        map_df = map_df.dropna(subset=["lat", "lon"])
+
                         map_df["hpi"] = df_results["HPI"]
                         map_df["site"] = df_results[site_col] if site_col != "None" else df_results.index.astype(str)
                         map_df["category"] = df_results["Category"]
                         map_df["color"] = map_df["category"].apply(category_to_color)
-                        map_df["radius"] = (map_df["hpi"]+1) * 500  # heuristic
-                        initial_view = pdk.ViewState(latitude=map_df["lat"].mean(), longitude=map_df["lon"].mean(), zoom=6)
-                        layer = pdk.Layer(
-                            "ScatterplotLayer",
-                            data=map_df,
-                            get_position='[lon, lat]',
-                            get_color='color',
-                            get_radius="radius",
-                            pickable=True,
-                            auto_highlight=True
-                        )
-                        r = pdk.Deck(layers=[layer], initial_view_state=initial_view, tooltip={"text": "{site}\nHPI: {hpi}\nCategory: {category}"})
-                        st.subheader("Map — HMPI hotspots")
-                        st.pydeck_chart(r)
+                        map_df["radius"] = (map_df["hpi"] + 1) * 500
+
+                        if not map_df.empty:
+                            initial_view = pdk.ViewState(latitude=map_df["lat"].mean(), longitude=map_df["lon"].mean(), zoom=6)
+                            layer = pdk.Layer(
+                                "ScatterplotLayer",
+                                data=map_df,
+                                get_position='[lon, lat]',
+                                get_color='color',
+                                get_radius="radius",
+                                pickable=True,
+                                auto_highlight=True
+                            )
+                            r = pdk.Deck(
+                                layers=[layer],
+                                initial_view_state=initial_view,
+                                tooltip={"text": "{site}\nHPI: {hpi}\nCategory: {category}"}
+                            )
+                            st.subheader("Map — HMPI hotspots")
+                            st.pydeck_chart(r)
+                        else:
+                            st.error("No valid Latitude/Longitude values found in dataset.")
+
                     except Exception as e:
                         st.error(f"Failed to draw map: {e}")
 
@@ -200,5 +190,3 @@ if df is not None:
                         st.warning(f"Could not compute contributions chart: {e}")
 
 st.markdown("---")
-
-
