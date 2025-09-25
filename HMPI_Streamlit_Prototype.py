@@ -24,8 +24,10 @@ DEFAULT_LIMITS = {
     "Cu": 2.0
 }
 
+
 def load_sample_df():
     return pd.read_csv(io.StringIO(SAMPLE_CSV))
+
 
 def read_input(file):
     if file is None:
@@ -39,28 +41,42 @@ def read_input(file):
         st.error(f"Failed to read file: {e}")
         return None
 
+
 def compute_hpi(df, metals, standards):
+    # Keep only metals that have positive standard
     use_metals = [m for m in metals if standards.get(m, 0) > 0]
     if len(use_metals) == 0:
         raise ValueError("No metals with valid (>0) permissible limits.")
     S = np.array([standards[m] for m in use_metals], dtype=float)
     weights = 1.0 / S  # Wi
+    # Qi = (Mi / Si) * 100
     M = df[use_metals].fillna(0).to_numpy(dtype=float)
     Qi = (M / S) * 100.0
-    contributions = Qi * weights
+    contributions = Qi * weights  # shape (nrows, nmetals)
     numerator = contributions.sum(axis=1)
     denominator = weights.sum()
     hpi = numerator / denominator
+    # per-metal contribution dataframe
     contrib_df = pd.DataFrame(contributions, columns=[f"{m}_contrib" for m in use_metals], index=df.index)
     return pd.Series(hpi, index=df.index), contrib_df, use_metals
 
+
+def categorize_hpi(h):
+    if h < 50:
+        return "Low"
+    elif h < 100:
+        return "Moderate"
+    else:
+        return "High"
+
+
 def category_to_color(cat):
     if cat == "Low":
-        return [30, 160, 60]       # green
+        return [30, 160, 60]
     elif cat == "Moderate":
-        return [255, 165, 0]       # orange
+        return [255, 165, 0]
     else:
-        return [200, 30, 30]       # red
+        return [200, 30, 30]
 
 # UI
 st.title("🚰 HMPI — Heavy Metal Pollution Index Calculator")
@@ -70,6 +86,7 @@ with st.sidebar:
     uploaded = st.file_uploader("Upload CSV or Excel (columns: site, lat, lon, metal columns)", type=["csv","xlsx","xls"])
     st.markdown("Or download a sample dataset to try:")
     st.download_button("Download sample CSV", SAMPLE_CSV, file_name="hmpi_sample.csv", mime="text/csv")
+
 
 df = None
 if uploaded:
@@ -87,8 +104,8 @@ if df is not None:
 
     st.sidebar.header("Map & Columns")
     site_col = st.sidebar.selectbox("Site name column", options=["None"]+cols, index=0)
-    lat_col = st.sidebar.selectbox("Latitude column", options=["None"]+cols, index=cols.index("Latitude") if "Latitude" in cols else 0)
-    lon_col = st.sidebar.selectbox("Longitude column", options=["None"]+cols, index=cols.index("Longitude") if "Longitude" in cols else 0)
+    lat_col = st.sidebar.selectbox("Latitude column", options=["None"]+numeric_cols, index=numeric_cols.index("Latitude") if "Latitude" in numeric_cols else 0)
+    lon_col = st.sidebar.selectbox("Longitude column", options=["None"]+numeric_cols, index=numeric_cols.index("Longitude") if "Longitude" in numeric_cols else 0)
 
     st.sidebar.header("Select metal columns")
     known_metals = list(DEFAULT_LIMITS.keys())
@@ -140,23 +157,23 @@ if df is not None:
                     csv = df_results.to_csv(index=False)
                     st.download_button("Download results CSV", csv, file_name="hmpi_results.csv", mime="text/csv")
 
-                    # Map
                     try:
                         map_df = df_results[[lat_col, lon_col]].copy()
                         map_df = map_df.rename(columns={lat_col: "lat", lon_col: "lon"})
-
-                        # Convert lat/lon to numeric to avoid string errors
-                        map_df["lat"] = pd.to_numeric(map_df["lat"], errors="coerce")
-                        map_df["lon"] = pd.to_numeric(map_df["lon"], errors="coerce")
-                        map_df = map_df.dropna(subset=["lat", "lon"])
-
+                        map_df["lat"] = pd.to_numeric(map_df["lat"], errors='coerce')
+                        map_df["lon"] = pd.to_numeric(map_df["lon"], errors='coerce')
+                        map_df = map_df.dropna(subset=["lat","lon"])
                         map_df["hpi"] = df_results["HPI"]
                         map_df["site"] = df_results[site_col] if site_col != "None" else df_results.index.astype(str)
                         map_df["category"] = df_results["Category"]
                         map_df["color"] = map_df["category"].apply(category_to_color)
-                        map_df["radius"] = (map_df["hpi"] + 1) * 500
+                        map_df["radius"] = (map_df["hpi"]+1) * 500
 
-                        if not map_df.empty:
+                        if map_df.empty:
+                            st.warning("No valid latitude/longitude data available. Showing India map outline.")
+                            initial_view = pdk.ViewState(latitude=21.1458, longitude=79.0882, zoom=4)
+                            r = pdk.Deck(layers=[], initial_view_state=initial_view)
+                        else:
                             initial_view = pdk.ViewState(latitude=map_df["lat"].mean(), longitude=map_df["lon"].mean(), zoom=6)
                             layer = pdk.Layer(
                                 "ScatterplotLayer",
@@ -167,20 +184,13 @@ if df is not None:
                                 pickable=True,
                                 auto_highlight=True
                             )
-                            r = pdk.Deck(
-                                layers=[layer],
-                                initial_view_state=initial_view,
-                                tooltip={"text": "{site}\nHPI: {hpi}\nCategory: {category}"}
-                            )
-                            st.subheader("Map — HMPI hotspots")
-                            st.pydeck_chart(r)
-                        else:
-                            st.error("No valid Latitude/Longitude values found in dataset.")
+                            r = pdk.Deck(layers=[layer], initial_view_state=initial_view, tooltip={"text": "{site}\\nHPI: {hpi}\\nCategory: {category}"})
 
+                        st.subheader("Map — HMPI hotspots")
+                        st.pydeck_chart(r)
                     except Exception as e:
                         st.error(f"Failed to draw map: {e}")
 
-                    # Metals contribution chart
                     try:
                         contrib_cols = [f"{m}_contrib" for m in used_metals]
                         avg_contrib = df_results[contrib_cols].mean().rename(index=lambda s: s.replace("_contrib",""))
